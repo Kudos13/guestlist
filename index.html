@@ -365,7 +365,7 @@ var currentFilter = 'active';
 var currentGrp = 'all';
 
 function defaultState() {
-  return { username:'', tasks:[], groups:[], xp:0, totalXP:0, done:0, streak:0, lastDate:null };
+  return { username:'', tasks:[], groups:[], xp:0, totalXP:0, done:0, streak:0, lastDate:null, lastResetDate:null };
 }
 
 var S = (function() {
@@ -381,9 +381,32 @@ function rIdx() {
   return i;
 }
 
+/* ---- daily reset ---- */
+function dailyReset() {
+  var today = new Date().toDateString();
+  if (S.lastResetDate === today) return; // already reset today
+  S.lastResetDate = today;
+  // remove all tasks (completed and active) — keep XP, rank, streak, groups
+  S.tasks = [];
+  persist();
+}
+
+/* ---- schedule next midnight reset ---- */
+function scheduleReset() {
+  var now = new Date();
+  var midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+  var msUntilMidnight = midnight - now;
+  setTimeout(function() {
+    dailyReset();
+    redraw();
+    scheduleReset(); // schedule the next one
+  }, msUntilMidnight);
+}
+
 /* ---- boot ---- */
 (function boot() {
   buildSwatches();
+  dailyReset(); // run on load in case they open app after midnight
 
   if (!S.username) {
     show('setupWrap');
@@ -432,6 +455,9 @@ function rIdx() {
 
   /* timer refresh */
   setInterval(function() { drawTasks(); checkOverdue(); }, 30000);
+
+  /* schedule midnight reset */
+  scheduleReset();
 })();
 
 /* ---- helpers ---- */
@@ -613,10 +639,8 @@ function doToggleTask(id, e) {
   if (!t) return;
 
   if (t.done) {
-    t.done    = false;
-    S.xp      = Math.max(0, S.xp - t.xp);
-    S.totalXP = Math.max(0, S.totalXP - t.xp);
-    S.done    = Math.max(0, S.done - 1);
+    // Uncheck — move back to active but keep all XP earned
+    t.done = false;
     persist(); redraw(); return;
   }
 
@@ -634,13 +658,6 @@ function doToggleTask(id, e) {
 }
 
 function doDeleteTask(id) {
-  var t = null;
-  for (var i = 0; i < S.tasks.length; i++) { if (S.tasks[i].id === id) { t = S.tasks[i]; break; } }
-  if (t && t.done) {
-    S.xp      = Math.max(0, S.xp - t.xp);
-    S.totalXP = Math.max(0, S.totalXP - t.xp);
-    S.done    = Math.max(0, S.done - 1);
-  }
   S.tasks = S.tasks.filter(function(x) { return x.id !== id; });
   persist(); redraw();
 }
